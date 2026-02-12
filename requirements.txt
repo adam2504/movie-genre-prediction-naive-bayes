@@ -1,3 +1,4 @@
 pandas
 fsspec
 huggingface_hub
+scikit-learn
