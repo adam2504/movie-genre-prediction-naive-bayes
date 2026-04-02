@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 
 # ── Config ────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Movie Genre Classifier",
+    page_title="NaïveFlix — Movie Genre Classifier",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -36,6 +36,30 @@ FEATURE_LABELS = {
     "release_year":  "Année de sortie",
 }
 
+# ── Logo SVG (inline) ─────────────────────────────────────────────────────────
+LOGO_SVG = '''
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="72" viewBox="0 0 600 160">
+  <defs>
+    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a5b4fc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#818cf8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="75" r="38" fill="none" stroke="url(#logoGrad)" stroke-width="4.5"/>
+  <circle cx="50" cy="75" r="11" fill="#a5b4fc"/>
+  <circle cx="50" cy="40" r="5.5" fill="#818cf8"/>
+  <circle cx="50" cy="110" r="5.5" fill="#818cf8"/>
+  <circle cx="15" cy="75" r="5.5" fill="#818cf8"/>
+  <circle cx="85" cy="75" r="5.5" fill="#818cf8"/>
+  <text x="105" y="90" font-family="Arial Black, Impact, sans-serif" font-size="60" font-weight="900" fill="#e0e7ff" letter-spacing="-1">
+    Naïve<tspan fill="#a5b4fc">Flix</tspan>
+  </text>
+  <text x="108" y="118" font-family="Arial, sans-serif" font-size="14" fill="#64748b" letter-spacing="3.5">
+    PREDICT THE GENRE
+  </text>
+</svg>
+'''
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -51,16 +75,32 @@ st.markdown("""
         padding: 2.5rem 3rem;
         margin-bottom: 2rem;
         border: 1px solid rgba(255,255,255,0.08);
+        position: relative;
+        overflow: hidden;
     }
-    .hero h1 {
-        font-size: 2.4rem;
-        font-weight: 700;
-        margin: 0 0 0.5rem 0;
-        background: linear-gradient(90deg, #e0e7ff, #a5b4fc);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+    .hero::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(165,180,252,0.08) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
     }
-    .hero p { color: #94a3b8; font-size: 1rem; margin: 0; }
+    .hero-logo {
+        margin-bottom: 1rem;
+    }
+    .hero-logo svg {
+        filter: drop-shadow(0 2px 8px rgba(165,180,252,0.15));
+    }
+    .hero p {
+        color: #94a3b8;
+        font-size: 1rem;
+        margin: 0;
+        max-width: 640px;
+    }
 
     .metric-card {
         background: #1e2433;
@@ -137,6 +177,17 @@ st.markdown("""
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.06em;
+    }
+
+    /* Logo in sidebar */
+    .sidebar-logo {
+        text-align: center;
+        padding: 0.5rem 0 1rem 0;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        margin-bottom: 1rem;
+    }
+    .sidebar-logo svg {
+        filter: drop-shadow(0 1px 4px rgba(165,180,252,0.12));
     }
 
     div[data-testid="stSpinner"] { color: #a5b4fc; }
@@ -220,10 +271,10 @@ pipeline, report, cap = load_and_train()
 macro_f1 = report["macro avg"]["f1-score"]
 accuracy  = report["accuracy"]
 
-# ── Hero ──────────────────────────────────────────────────────────────────────
+# ── Hero avec logo ────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="hero">
-    <h1>🎬 Movie Genre Classifier</h1>
+    <div class="hero-logo">{LOGO_SVG}</div>
     <p>Classifie un film parmi <strong>Animation · Horror · Drama</strong> à partir de ses métadonnées numériques — Gaussian Naive Bayes, entraîné sur {cap*3:,} films.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -241,8 +292,30 @@ with c4:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Sidebar — inputs ──────────────────────────────────────────────────────────
+# ── Sidebar — logo + inputs ───────────────────────────────────────────────────
+LOGO_SVG_SMALL = '''
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="44" viewBox="0 0 600 160">
+  <defs>
+    <linearGradient id="logoGradSm" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a5b4fc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#818cf8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="75" r="38" fill="none" stroke="url(#logoGradSm)" stroke-width="4.5"/>
+  <circle cx="50" cy="75" r="11" fill="#a5b4fc"/>
+  <circle cx="50" cy="40" r="5.5" fill="#818cf8"/>
+  <circle cx="50" cy="110" r="5.5" fill="#818cf8"/>
+  <circle cx="15" cy="75" r="5.5" fill="#818cf8"/>
+  <circle cx="85" cy="75" r="5.5" fill="#818cf8"/>
+  <text x="105" y="90" font-family="Arial Black, Impact, sans-serif" font-size="60" font-weight="900" fill="#e0e7ff" letter-spacing="-1">
+    Naïve<tspan fill="#a5b4fc">Flix</tspan>
+  </text>
+</svg>
+'''
+
 with st.sidebar:
+    st.markdown(f'<div class="sidebar-logo">{LOGO_SVG_SMALL}</div>', unsafe_allow_html=True)
+
     st.markdown("### 🎥 Caractéristiques du film")
 
     st.markdown("**Notes & Popularité**")
