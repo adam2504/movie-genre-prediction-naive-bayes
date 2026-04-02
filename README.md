@@ -5,7 +5,7 @@
 
 ## Objectif
 
-Classifier le genre d'un film à partir de ses **métadonnées numériques uniquement** (pas de features textuelles dans un premier temps), en utilisant un modèle **Gaussian Naive Bayes**.
+Classifier le genre d'un film à partir de ses **métadonnées numériques uniquement** (pas de features textuelles), en utilisant un modèle **Gaussian Naive Bayes**.
 
 ---
 
@@ -13,9 +13,7 @@ Classifier le genre d'un film à partir de ses **métadonnées numériques uniqu
 
 **Source :** [TMDB-IMDB Movies Dataset](https://huggingface.co/datasets/HenryWaltson/TMDB-IMDB-Movies-Dataset) — HuggingFace
 
-Dataset combinant des données TMDB et IMDB, donnant accès à plus de **400 000 films** avec 29 colonnes (notes, popularité, budget, genres, casting, langues, etc.).
-
-L'intérêt de combiner les deux sources est d'avoir à la fois un grand volume de données et une double évaluation des films (deux systèmes de notation distincts).
+Dataset combinant TMDB et IMDB : **400 000+ films**, 29 colonnes (notes, popularité, budget, genres, casting, langues, etc.).
 
 ---
 
@@ -23,119 +21,120 @@ L'intérêt de combiner les deux sources est d'avoir à la fois un grand volume 
 
 ### Étape 1 — Exploration et nettoyage
 
-- Exploration classique du dataset (`.info()`, `.head()`, distributions)
-- Suppression des **doublons**
-- Suppression de colonnes inutiles pour l'instant : `backdrop_path`, `keywords`, `homepage`, `tconst`, `overview`, `poster_path`, `tagline` (features textuelles mises de côté)
-- Conservation uniquement des films avec une **date de sortie renseignée** (colonne `release_date`), car cette information sera utilisée comme feature
+- Exploration du dataset (`.info()`, `.head()`, distributions)
+- Suppression des doublons et colonnes inutiles (`backdrop_path`, `keywords`, `homepage`, `tconst`, `overview`, `poster_path`, `tagline`)
+- Conservation uniquement des films avec `release_date` renseignée
 
-> **Filtre budget/revenue (retiré) :** À une étape intermédiaire, un filtre avait été appliqué pour ne garder que les films avec des données de budget et revenue non nulles. Ce filtre a été **supprimé** car il éliminait ~380 000 entrées, réduisant le dataset à ~10 000 films — trop peu pour obtenir un bon modèle. Les colonnes `budget` et `revenue` ne sont donc pas utilisées comme features.
+> **Filtre budget/revenue (retiré) :** Ce filtre éliminait ~380 000 entrées → dataset réduit à ~10 000 films, trop peu. Les colonnes `budget` et `revenue` ne sont pas utilisées.
 
 ---
 
 ### Étape 2 — Feature Engineering
 
-#### Fusion des notes TMDB et IMDB
-Le dataset contient **4 colonnes de notation** distinctes :
-- `vote_average` + `vote_count` (TMDB)
-- `averageRating` + `numVotes` (IMDB)
-
-Choix : calcul d'une **moyenne pondérée** par le nombre de votes pour obtenir une note unique plus robuste :
+#### Fusion des notes TMDB + IMDB
 
 ```
-rating = (vote_average × vote_count + averageRating × numVotes) / (vote_count + numVotes)
+rating      = (vote_average × vote_count + averageRating × numVotes) / (vote_count + numVotes)
 total_votes = vote_count + numVotes
 ```
 
-Les 4 colonnes originales sont ensuite supprimées.
+#### Features retenues (7 features finales, validées par ablation)
 
-#### Features retenues
-
-| Feature | Description | Remarque |
+| Feature | Type | Description |
 |---|---|---|
-| `rating` | Note combinée pondérée TMDB+IMDB | — |
-| `total_votes` | Nombre total de votes combinés | — |
-| `popularity` | Score de popularité TMDB | — |
-| `runtime` | Durée du film (minutes) | — |
-| `is_english` | Film en anglais ? (0/1) | Feature binaire |
-| `cast_count` | Nombre d'acteurs au casting | À valider — dépend de la complétude des données |
-| `release_month` | Mois de sortie | Saisonnalité potentielle |
-| `release_year` | Année de sortie | — |
-| `num_languages` | Nombre de langues parlées | À valider |
-| `num_countries` | Nombre de pays de production | À valider |
+| `rating` | Continue | Note combinée pondérée TMDB+IMDB |
+| `total_votes` | Continue | Nombre total de votes combinés |
+| `popularity` | Continue | Score de popularité TMDB |
+| `is_english` | Binaire | Film en anglais ? (0/1) |
+| `cast_count` | Discret | Nombre d'acteurs au casting |
+| `release_month` | Discret | Mois de sortie |
+| `release_year` | Discret | Année de sortie |
 
-> **Note :** Certaines de ces features sont à valider plus rigoureusement (tests statistiques, corrélations par genre). `cast_count`, `num_languages` et `num_countries` notamment dépendent de la complétude du dataset et pourraient être biaisiés.
+**Features retirées par ablation** (`notebooks/experiments/ablation_features.ipynb`) :
+- `runtime` — suppression sans perte (Macro F1 stable)
+- `num_languages` — idem
+- `num_countries` — idem
+- `budget` / `revenue` — catastrophique (NaN massifs → 33% accuracy)
 
 ---
 
-### Étape 3 — Définition du label : le genre
+### Étape 3 — Stratégie de label genre
 
-#### Constat : multi-label
-Le dataset contient **19 genres distincts**, mais la plupart des films en ont **plusieurs** (ex : *Interstellar* → `Adventure, Drama, Science Fiction`). Seulement ~185 000 films ont un genre unique.
+Le dataset contient **19 genres**, mais la plupart des films en ont plusieurs. Pour un classifieur mono-label, 4 stratégies ont été testées (`notebooks/exploration/genre_label_strategy.ipynb`) :
 
-#### Décision : prendre le premier genre
-Pour simplifier en classification mono-label, le choix a été de prendre **uniquement le premier genre listé** pour chaque film.
+| Stratégie | Macro F1 | N films |
+|---|---|---|
+| **S0 — Premier genre listé** ✓ | **0.67** | 58k |
+| S2 — Priorité fixe (Animation > Horror > Drama) | 0.63 | 75k |
+| S3 — Genre le plus rare | 0.63 | 75k |
+| S4 — Multi-instance (un film → plusieurs lignes) | 0.63 | 75k |
 
-> ⚠️ **Point à investiguer :** Cette décision est très dépendante de l'ordre établi par le dataset. On ne sait pas si cet ordre est arbitraire ou s'il reflète le genre "principal". Une alternative est en cours d'exploration dans `main copy.ipynb`.
+**Décision : garder S0 (premier genre).** Aucune alternative ne bat la baseline. L'ordre TMDB est corrélé au genre principal du film.
+
+Contexte complémentaire (`notebooks/exploration/single_genre_analysis.ipynb`) : le modèle performe mieux sur les films à genre unique (Macro F1 0.67, acc 75%) que sur les multi-genres (acc 68%), mais entraîner uniquement sur les films à genre unique ne change pas les performances globales — on garde donc tous les films.
 
 ---
 
 ### Étape 4 — Sélection des genres et undersampling
 
-#### Distribution des genres (top)
-| Genre | Nombre de films |
-|---|---|
-| Drama | 95 151 |
-| Comedy | 62 676 |
-| Documentary | 54 188 |
-| Animation | 20 382 |
-| Action | 20 179 |
-| Horror | 19 401 |
-| ... | ... |
+Toutes les combinaisons de 3 genres parmi les 19 disponibles ont été testées (`notebooks/experiments/genre_combination.ipynb`) — **969 combinaisons**.
 
-#### Évolution des tentatives
+**Résultat : Animation / Horror / Drama est dans le top 2% (rang 15/969)**, avec le **meilleur ratio performance / volume de données** :
 
-| Étape | Genres | Accuracy | Macro F1 | Notes |
-|---|---|---|---|---|
-| Baseline | 5 genres (Drama, Comedy, Action, Horror, Adventure) | ~42% | ~0.28 | Fort déséquilibre des classes |
-| + Undersampling | 5 genres | ~31% | ~0.26 | Biais corrigé, features insuffisantes |
-| Simplification à 3 | Drama, Comedy, Action | ~44% | ~0.40 | Amélioration mais Comedy≈Drama numériquement |
-| Retrait filtre budget/revenue | Drama, Comedy, Documentary | ~47% | ~0.39 | +200k films disponibles |
-| Nouvelles features + ColumnTransformer | Drama, Comedy, Documentary | ~50% | ~0.45 | Objectif numérique atteint |
-| **Meilleur combo trouvé** | **Animation, Horror, Drama** | **66%** | **0.66** | Genres numériquement distincts |
+| Combo | Macro F1 | Cap/genre |
+|---|---|---|
+| Animation, Thriller, Western | 0.762 | 4 166 |
+| Animation, Horror, Western | 0.746 | 4 166 |
+| ... | ... | ... |
+| **Animation, Horror, Drama** ✓ | **0.674** | **19 401** |
 
-#### Pourquoi Animation / Horror / Drama ?
-Ces trois genres ont des **profils numériques naturellement distincts**, ce qui les rend séparables par un modèle Naive Bayes :
+Les combos "mieux classés" ont ~4 000 films/genre vs 19 401 pour notre choix — 5x moins de données, moins robustes.
 
-- **Animation** : `cast_count` spécifique, `runtime` particulier, `release_year` plus ancien en moyenne, `rating` plus familial
-- **Horror** : `popularity` variable, `runtime` court, faible `total_votes`, `release_year` récent
-- **Drama** : `total_votes` élevé, `runtime` long, distribution de `rating` équilibrée
-
-#### Pourquoi Comedy / Drama échouaient ?
-Comedy et Drama partagent des distributions quasi identiques sur toutes les features numériques — leur distinction est **sémantique** (contenu narratif), pas quantitative. Un modèle sans features textuelles ne peut pas les différencier.
-
-#### Undersampling
-Pour éviter le biais de classe, on plafonne chaque genre au nombre de films du genre le moins représenté :
-- ~19 401 films par genre → **58 203 films au total**
+**Undersampling :** on plafonne au genre le moins représenté :
+- 19 401 films/genre → **58 203 films au total**
 - Split 80/20 stratifié → 46 562 train / 11 641 test
+
+#### Pourquoi ces 3 genres sont séparables
+
+D'après les tests statistiques (`notebooks/experiments/feature_behavior.ipynb`) — Kruskal-Wallis, p ≈ 0 pour toutes les features :
+
+| Feature | H-stat | Observation clé |
+|---|---|---|
+| `cast_count` | 17 199 | Animation ~2.6 acteurs vs Drama/Horror ~7 |
+| `rating` | 11 198 | Horror note ~5.1 vs Animation/Drama ~6.4 |
+| `is_english` | 5 645 | Drama peu anglophone (0.37) vs Horror (0.73) |
+| `release_year` | 5 192 | Animation plus ancien (~1985) vs Horror récent (~2006) |
+| `popularity` | 2 061 | Horror plus populaire (~3.6) vs Drama (~2.2) |
+| `total_votes` | 1 976 | Horror plus voté (~4175) vs Animation (~2694) |
+| `release_month` | 173 | Significatif mais moins discriminant |
 
 ---
 
 ### Étape 5 — Résultats du modèle final
 
-**Modèle :** `GaussianNB` via `sklearn`, avec `RobustScaler` sur les features continues
+**Modèle :** `GaussianNB` avec `RobustScaler` sur les 3 features continues, passthrough pour les 4 features discrètes.
+
+**Cross-validation 5-fold stratifiée :**
+
+```
+Macro F1 : 0.673 ± 0.003
+Accuracy : 0.674 ± 0.003
+```
+
+**Rapport de classification (test set) :**
 
 ```
               precision    recall  f1-score   support
 
-   Animation       0.69      0.76      0.72      3880
-       Drama       0.62      0.66      0.64      3880
-      Horror       0.69      0.57      0.62      3881
+   Animation       0.73      0.73      0.73      3880
+       Drama       0.60      0.72      0.66      3880
+      Horror       0.71      0.57      0.63      3881
 
-    accuracy                           0.66     11641
-   macro avg       0.66      0.66      0.66     11641
+    accuracy                           0.67     11641
+   macro avg       0.68      0.67      0.67     11641
 ```
 
-- **Animation** est le mieux prédit (F1 = 0.72) — profil le plus distinctif
+- **Animation** est le mieux prédit (F1 = 0.73) — profil le plus distinctif
 - **Horror** a le plus faible recall (0.57) — confusion partielle avec Drama
 - Priors équilibrés à **33.3%** chacun grâce à l'undersampling
 
@@ -145,33 +144,34 @@ Pour éviter le biais de classe, on plafonne chaque genre au nombre de films du 
 
 ```
 Projet/
-├── main.ipynb                          # Notebook actif — développement en cours
-├── app.py                              # App Streamlit (squelette — à connecter au pipeline)
+├── main.ipynb                                  # Notebook actif — pipeline final documenté
+├── app.py                                      # App Streamlit (squelette — à connecter)
 ├── README.md
 ├── enonce.md
 ├── requirements.txt
 └── notebooks/
-    ├── baseline.ipynb                  # Pipeline propre de référence (ne pas modifier)
+    ├── baseline.ipynb                          # Pipeline propre de référence (ne pas modifier)
     ├── archive/
-    │   └── brouillon.ipynb             # Ancien notebook brouillon (historique)
+    │   └── brouillon.ipynb                     # Ancien notebook brouillon (historique)
     ├── exploration/
-    │   └── genre_label_strategy.ipynb  # Stratégies alternatives pour le label genre
+    │   ├── genre_label_strategy.ipynb          # Test des stratégies S0/S2/S3/S4 → S0 gagne
+    │   └── single_genre_analysis.ipynb         # Films genre unique vs multi-genres
     └── experiments/
-        └── (copies de baseline pour tests isolés)
+        ├── ablation_features.ipynb             # Sélection des 7 features finales
+        ├── genre_combination.ipynb             # Test des 969 combos de 3 genres → top 2%
+        └── feature_behavior.ipynb              # Distributions, séparabilité, gaussianité, corrélations
 ```
 
 ### Principe de travail
-- **`main.ipynb`** : notebook actif, basé sur `baseline.ipynb`, où le développement continue
-- **`baseline.ipynb`** : point de départ figé et propre — ne pas modifier
-- **`experiments/`** : pour chaque test (ex: retirer une feature, changer les genres), copier `baseline.ipynb` ici avec un nom explicite et n'y faire **qu'un seul changement**
-- **`app.py`** : app Streamlit qui sera connectée au pipeline exporté depuis `main.ipynb` (via `joblib`)
+- **`main.ipynb`** : notebook actif avec toutes les décisions justifiées
+- **`baseline.ipynb`** : point de départ figé — ne pas modifier
+- **`experiments/`** : tests isolés, chacun un seul changement par rapport à baseline
+- **`exploration/`** : analyse des données et choix méthodologiques
+- **`app.py`** : app Streamlit à connecter au pipeline exporté via `joblib`
 
 ---
 
 ## Prochaines étapes
 
-- [ ] Valider la décision "premier genre" vs autres stratégies (`notebooks/exploration/genre_label_strategy.ipynb`)
-- [ ] Valider et justifier chaque feature numériquement (corrélations, tests) — notamment `cast_count`, `num_languages`, `num_countries`
-- [ ] Tester l'ajout de **features textuelles (TF-IDF)** sur `overview`/`keywords` pour permettre la distinction de genres sémantiquement proches
-- [ ] Envisager un retour à 4-5 genres avec les features textuelles
-- [ ] Connecter `app.py` au pipeline exporté depuis `main.ipynb` (export `joblib`, ajout `streamlit` dans `requirements.txt`)
+- [ ] Connecter `app.py` au pipeline exporté depuis `main.ipynb` (export `joblib`)
+- [ ] PowerPoint 3 slides : contexte, problème, résultats
