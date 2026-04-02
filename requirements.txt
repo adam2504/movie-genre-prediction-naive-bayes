@@ -5,3 +5,4 @@ scikit-learn
 nbaide
 joblib
 streamlit
+plotly
